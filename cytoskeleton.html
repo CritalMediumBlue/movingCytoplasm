@@ -22,7 +22,6 @@
             align-items: center;
             justify-content: center;
         }
-    
     </style>
 </head>
 <body>
@@ -35,15 +34,44 @@
     
     <script>
         // Module aliases for Matter.js
-        const Engine = Matter.Engine,
-              Render = Matter.Render,
-              Runner = Matter.Runner,
-              Bodies = Matter.Bodies,
-              Body = Matter.Body,
-              Composite = Matter.Composite,
-              Constraint = Matter.Constraint,
-              Events = Matter.Events,
-              Common = Matter.Common;
+        const { Engine, Render, Runner, Bodies, Body, Composite, Constraint, Events, Common } = Matter;
+
+        // Configuration
+        const config = {
+            numCouples: 50,
+            numCentroids: 3,
+            canvas: {
+                width: 1500,
+                height: 1100,
+                background: '#f0f0f0'
+            },
+            particle: {
+                radius: 0.5,
+                equilibriumLength: 20,
+                stretchThreshold: 40, // 2x equilibriumLength
+                restitution: 0.8,
+                friction: 0.005
+            },
+            spring: {
+                stiffness: 0.0005,
+                damping: 1,
+                forceMultiplier: 0.00001,
+                lineWidth: 0.5
+            },
+            colors: {
+                active: { fill: '#4285F4', stroke: '#2A56C6' },
+                inactive: { fill: '#EA4335', stroke: '#B31412' },
+                spring: '#34A853',
+                wall: '#333333',
+                obstacle: { fill: '#8BC34A', stroke: '#689F38' },
+                centroid: [
+                    { fill: '#FF9800', stroke: '#E65100' }, // Orange
+                    { fill: '#9C27B0', stroke: '#6A1B9A' }, // Purple
+                    { fill: '#009688', stroke: '#00695C' }  // Teal
+                ],
+                centroidSpring: '#FFFFFF'
+            }
+        };
 
         // Create engine
         const engine = Engine.create();
@@ -54,75 +82,65 @@
             element: document.getElementById('simulation-canvas'),
             engine: engine,
             options: {
-                width: 1500,
-                height: 1100,
+                width: config.canvas.width,
+                height: config.canvas.height,
                 wireframes: false,
-                background: '#f0f0f0'
+                background: config.canvas.background
             }
         });
 
-        // Configuration
-        const config = {
-            numCouples: 50,
-            numCentroids: 3,
-            canvasWidth: 1500,
-            canvasHeight: 1100,
-            equilibriumLength: 20,
-            particleRadius: 2,
-            colors: {
-                active: {
-                    fill: '#4285F4',
-                    stroke: '#2A56C6'
-                },
-                inactive: {
-                    fill: '#EA4335',
-                    stroke: '#B31412'
-                },
-                spring: '#34A853'
-            },
-            physics: {
-                restitution: 0.8,
-                friction: 0.005,
-                stiffness: 0.0005,
-                damping: 1,
-                forceMultiplier: 0.00005
-            }
-        };
+        // Helper function to calculate distance between two points
+        function calculateDistance(pointA, pointB) {
+            const dx = pointB.x - pointA.x;
+            const dy = pointB.y - pointA.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
 
-        // Calculate stretch threshold
-        const stretchThreshold = config.equilibriumLength * 2;
+        // Helper function to create a constraint between two bodies
+        function createConstraint(bodyA, bodyB, options = {}) {
+            return Constraint.create({
+                bodyA,
+                bodyB,
+                stiffness: options.stiffness || config.spring.stiffness,
+                damping: options.damping || config.spring.damping,
+                length: options.length || config.particle.equilibriumLength,
+                render: {
+                    type: 'line',
+                    anchors: false,
+                    strokeStyle: options.color || config.colors.spring,
+                    lineWidth: options.lineWidth || config.spring.lineWidth,
+                    opacity: options.opacity || 1
+                }
+            });
+        }
 
         // Create walls to keep particles within bounds
+        const wallThickness = 56.3;
         const walls = [
-            Bodies.rectangle(0, config.canvasHeight/2, 56.3, config.canvasHeight, { 
+            // Left wall
+            Bodies.rectangle(0, config.canvas.height/2, wallThickness, config.canvas.height, { 
                 isStatic: true,
-                render: { fillStyle: '#333333' }
-            }),     // left
-            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 56.3, config.canvasHeight, { 
+                render: { fillStyle: config.colors.wall }
+            }),
+            // Right wall
+            Bodies.rectangle(config.canvas.width, config.canvas.height/2, wallThickness, config.canvas.height, { 
                 isStatic: true,
-                render: { fillStyle: '#333333' }
-            }),   // right
-            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 56.3, { 
+                render: { fillStyle: config.colors.wall }
+            }),
+            // Top wall
+            Bodies.rectangle(config.canvas.width/2, 0, config.canvas.width, wallThickness, { 
                 isStatic: true,
-                render: { fillStyle: '#333333' }
-            }),     // top
-            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 56.3, { 
+                render: { fillStyle: config.colors.wall }
+            }),
+            // Bottom wall
+            Bodies.rectangle(config.canvas.width/2, config.canvas.height, config.canvas.width, wallThickness, { 
                 isStatic: true,
-                render: { fillStyle: '#333333' }
-            })    // bottom
+                render: { fillStyle: config.colors.wall }
+            })
         ];
 
-        // Create maze walls and obstacles - simplified version
-        const mazeElements = [];
-        
- 
-  
-
-        
-        // Add just a few interesting static objects
-        
-        // Circular obstacles - reduced number
-        const circles = [
+        // Create circular obstacles
+        const circlePositions = [
             { x: 400, y: 400, radius: 150 },
             { x: 1100, y: 400, radius: 100 },
             { x: 750, y: 550, radius: 150 },
@@ -135,25 +153,61 @@
             { x: 750, y: 900, radius: 100 }
         ];
         
-        circles.forEach(circle => {
-            mazeElements.push(
-                Bodies.circle(circle.x, circle.y, circle.radius, {
-                    isStatic: true,
-                    render: { 
-                        fillStyle: '#8BC34A',
-                        strokeStyle: '#689F38',
-                        lineWidth: 2
+        const obstacles = circlePositions.map(circle => 
+            Bodies.circle(circle.x, circle.y, circle.radius, {
+                isStatic: true,
+                render: { 
+                    fillStyle: config.colors.obstacle.fill,
+                    strokeStyle: config.colors.obstacle.stroke,
+                    lineWidth: 2
+                }
+            })
+        );
+        
+        // Add walls and obstacles to the world
+        Composite.add(engine.world, [...walls, ...obstacles]);
+
+        // Create centroids
+        const centroids = Array(config.numCentroids).fill().map((_, i) => {
+            // Create a centroid with initial position and direction
+            const centroid = Bodies.circle(
+                100 + (i * 50),
+                100 + (i * 50),
+                1,
+                {
+                    isStatic: false,
+                    render: {
+                        fillStyle: config.colors.centroid[i].fill,
+                        strokeStyle: config.colors.centroid[i].stroke,
+                        lineWidth: 1
+                    },
+                    // Add direction as a unit vector property
+                    direction: { 
+                        x: i === 0 ? 1 : (i === 1 ? 0 : -0.5),
+                        y: i === 0 ? 0 : (i === 1 ? 1 : 0.5)
                     }
-                })
+                }
             );
+            
+            Composite.add(engine.world, centroid);
+            return centroid;
         });
-        
-   
-        
-  
-        
-        // Add all maze elements to the world
-        Composite.add(engine.world, [...walls, ...mazeElements]);
+
+        // Create springs between centroids
+        for (let i = 0; i < centroids.length; i++) {
+            for (let j = i + 1; j < centroids.length; j++) {
+                const centroidSpring = createConstraint(centroids[i], centroids[j], {
+                    stiffness: 0.005,
+                    damping: 0.05,
+                    length: 100,
+                    color: config.colors.centroidSpring,
+                    lineWidth: 0.5,
+                    opacity: 0.5
+                });
+                
+                Composite.add(engine.world, centroidSpring);
+            }
+        }
 
         // Couple class to manage a pair of particles and their spring
         class Couple {
@@ -161,128 +215,134 @@
                 this.id = id;
                 
                 // Create particles
-                this.particleA = this.createParticle(
-                    x, 
-                    y, 
-                    true, // static
-                    config.colors.inactive
-                );
-                
+                this.particleA = this.createParticle(x, y, true, config.colors.inactive);
                 this.particleB = this.createParticle(
-                    x + config.equilibriumLength, 
+                    x + config.particle.equilibriumLength, 
                     y, 
-                    false, // not static
+                    false, 
                     config.colors.active
                 );
                 
                 // Create spring constraint between particles
-                this.spring = Constraint.create({
-                    bodyA: this.particleA,
-                    bodyB: this.particleB,
-                    stiffness: config.physics.stiffness,
-                    damping: config.physics.damping,
-                    length: config.equilibriumLength,
-                    render: {
-                        type: 'line',
-                        anchors: false, 
-                        strokeStyle: config.colors.spring,
-                        lineWidth: 0.123
-                    }
-                });
+                this.spring = createConstraint(this.particleA, this.particleB);
                 
                 // Track which particle is currently active
                 this.activeParticle = this.particleB;
                 this.inactiveParticle = this.particleA;
                 
                 // Initialize centroid influence weights
-                // Each couple will have different weights for each centroid
-                this.centroidWeights = [];
-                for (let i = 0; i < config.numCentroids; i++) {
-                    // Generate random weights between 0.1 and 1.0
-                    // This creates varied influence patterns
-                    this.centroidWeights.push(0.1 + Math.random() * 0.9);
-                }
+                this.centroidWeights = Array(config.numCentroids).fill().map(() => 
+                    0.1 + Math.random() * 0.9
+                );
                 
                 // Add to world
                 Composite.add(engine.world, [this.particleA, this.particleB, this.spring]);
+                
+                // Connect to centroids
+                this.connectToCentroids();
             }
             
             createParticle(x, y, isStatic, colorSet) {
-                return Bodies.circle(x, y, config.particleRadius, {
+                return Bodies.circle(x, y, config.particle.radius, {
                     isStatic: isStatic,
-                    restitution: config.physics.restitution,
-                    friction: config.physics.friction,
+                    restitution: config.particle.restitution,
+                    friction: config.particle.friction,
                     render: {
                         fillStyle: colorSet.fill,
                         strokeStyle: colorSet.stroke,
-                        lineWidth: 0.123
+                        lineWidth: config.spring.lineWidth
                     },
-                    coupleId: this.id // Store reference to the couple
+                    coupleId: this.id
                 });
             }
             
-            // Calculate current spring length
-            getCurrentLength() {
-                return this.calculateDistance(
-                    this.particleA.position, 
-                    this.particleB.position
-                );
+            connectToCentroids() {
+                centroids.forEach((centroid, index) => {
+                    const influenceWeight = this.centroidWeights[index];
+                    
+                    // Calculate spring properties based on influence weight
+                    const lineWidth = config.spring.lineWidth + (influenceWeight * 0.2);
+                    const stiffness = 0.001+config.spring.stiffness * 0.2 * influenceWeight;
+                    
+                    // Generate color based on centroid color and influence
+                    const baseColor = config.colors.centroid[index];
+                    const rgbMatch = baseColor.fill.match(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+                    let color;
+                    
+                    if (rgbMatch) {
+                        const r = parseInt(rgbMatch[1], 16);
+                        const g = parseInt(rgbMatch[2], 16);
+                        const b = parseInt(rgbMatch[3], 16);
+                        color = `rgba(${r}, ${g}, ${b}, ${influenceWeight})`;
+                    } else {
+                        color = baseColor.fill;
+                    }
+                    
+                    // Bind both particles to the centroid
+                    const options = {
+                        equilibriumLength: config.particle.equilibriumLength * 1.5,
+                        stiffness: stiffness,
+                        color: color,
+                        lineWidth: lineWidth
+                    };
+                    
+                    Composite.add(engine.world, [
+                        createConstraint(this.activeParticle, centroid, options),
+                        createConstraint(this.inactiveParticle, centroid, options)
+                    ]);
+                });
             }
             
-            // Calculate distance between two points
-            calculateDistance(pointA, pointB) {
-                const dx = pointB.x - pointA.x;
-                const dy = pointB.y - pointA.y;
-                return Math.sqrt(dx * dx + dy * dy);
+            swapActiveParticle() {
+                // Swap active and inactive particles
+                [this.activeParticle, this.inactiveParticle] = [this.inactiveParticle, this.activeParticle];
+                
+                // Update physics properties
+                Body.setStatic(this.activeParticle, false);
+                Body.setStatic(this.inactiveParticle, true);
+                
+                // Update colors
+                this.activeParticle.render.fillStyle = config.colors.active.fill;
+                this.activeParticle.render.strokeStyle = config.colors.active.stroke;
+                this.inactiveParticle.render.fillStyle = config.colors.inactive.fill;
+                this.inactiveParticle.render.strokeStyle = config.colors.inactive.stroke;
             }
             
-            // Apply random motion to a particle with directional bias from centroid
             applyRandomMotion() {
-                const force = config.physics.forceMultiplier;
+                const force = config.spring.forceMultiplier;
                 
                 // Get random components
                 let forceX = (Math.random() - 0.5) * force;
                 let forceY = (Math.random() - 0.5) * force;
                 
                 // Apply bias based on centroids' directions with individual influence weights
-                // Bias strength (0.3 means 30% biased toward direction, 70% random)
                 const biasStrength = 0.3;
                 
-                // Calculate combined influence from centroids using the couple's specific weights
+                // Calculate combined influence from centroids
                 let combinedDirectionX = 0;
                 let combinedDirectionY = 0;
-                
-                // Track total effective weight for normalization
                 let totalEffectiveWeight = 0;
                 
-                for (let i = 0; i < centroids.length; i++) {
-                    // Get this couple's specific weight for this centroid
+                centroids.forEach((centroid, i) => {
                     const coupleSpecificWeight = this.centroidWeights[i];
-                    
-                    // Also factor in distance (closer centroids still have more influence)
-                    const distance = this.calculateDistance(
+                    const distance = calculateDistance(
                         this.activeParticle.position,
-                        centroids[i].position
+                        centroid.position
                     );
                     
-                    // Combine distance-based weight with couple-specific weight
-                    // This creates a more complex and interesting influence pattern
-                    const distanceWeight = 1 / Math.max(distance, 0.1); // Avoid division by zero
+                    const distanceWeight = 1 / Math.max(distance, 0.1);
                     const effectiveWeight = coupleSpecificWeight * distanceWeight;
                     
                     totalEffectiveWeight += effectiveWeight;
-                    
-                    // Add weighted contribution from this centroid
-                    combinedDirectionX += centroids[i].direction.x * effectiveWeight;
-                    combinedDirectionY += centroids[i].direction.y * effectiveWeight;
-                }
+                    combinedDirectionX += centroid.direction.x * effectiveWeight;
+                    combinedDirectionY += centroid.direction.y * effectiveWeight;
+                });
                 
                 // Normalize the combined direction
                 if (totalEffectiveWeight > 0) {
                     combinedDirectionX /= totalEffectiveWeight;
                     combinedDirectionY /= totalEffectiveWeight;
                     
-                    // Normalize to unit vector
                     const magnitude = Math.sqrt(combinedDirectionX * combinedDirectionX + combinedDirectionY * combinedDirectionY);
                     if (magnitude > 0) {
                         combinedDirectionX /= magnitude;
@@ -301,28 +361,14 @@
                 );
             }
             
-            // Swap active and inactive particles
-            swapActiveParticle() {
-                // Swap active and inactive particles
-                [this.activeParticle, this.inactiveParticle] = 
-                    [this.inactiveParticle, this.activeParticle];
-                
-                // Update physics properties
-                Body.setStatic(this.activeParticle, false);
-                Body.setStatic(this.inactiveParticle, true);
-                
-                // Update colors
-                this.activeParticle.render.fillStyle = config.colors.active.fill;
-                this.activeParticle.render.strokeStyle = config.colors.active.stroke;
-                this.inactiveParticle.render.fillStyle = config.colors.inactive.fill;
-                this.inactiveParticle.render.strokeStyle = config.colors.inactive.stroke;
-            }
-            
-            // Update the couple's state
             update() {
                 // Check if spring is stretched beyond threshold
-                const currentLength = this.getCurrentLength();
-                if (currentLength > stretchThreshold) {
+                const currentLength = calculateDistance(
+                    this.particleA.position, 
+                    this.particleB.position
+                );
+                
+                if (currentLength > config.particle.stretchThreshold) {
                     this.swapActiveParticle();
                 }
                 
@@ -331,195 +377,33 @@
             }
         }
         
-        // Create array to store all couples
-        const couples = [];
-        
-        // Function to bind two couples with a spring
-        function bindToCentroid(particle, centroid, options = {}) {
-            // Default options
-            const springOptions = {
-                equilibriumLength: options.equilibriumLength || config.equilibriumLength * 2,
-                stiffness: config.physics.stiffness *1*Math.random(),
-                damping: options.damping || config.physics.damping,
-                color: options.color || '#9C27B0', // Purple color for inter-couple springs
-                lineWidth: 0.123
-            };
-
-            
-            const springToCentroid = Constraint.create({
-                bodyA: particle,
-                bodyB: centroid,    
-                stiffness: springOptions.stiffness,
-                damping: springOptions.damping,
-                length: springOptions.equilibriumLength,
-                render: {
-                    type: 'line',
-                    anchors: false,
-                    strokeStyle: springOptions.color,
-                    lineWidth: springOptions.lineWidth
-                }
-            });
-            
-            // Add the spring to the world
-            Composite.add(engine.world, springToCentroid);
-            
-            // Return the spring for potential future reference
-            return springToCentroid;
-        }
-        
         // Create couples with distributed positions
-        function createCouples() {
-            // Start all couples in a clear area near the top left
+        const couples = Array(config.numCouples).fill().map((_, i) => {
             const startX = 100;
             const startY = 100;
             const spreadFactor = 50;
             
-            for (let i = 0; i < config.numCouples; i++) {
-                // Create a more clustered starting position
-                const x = startX + Math.random() * spreadFactor;
-                const y = startY + Math.random() * spreadFactor;
-                
-                // Create couple and add to array
-                couples.push(new Couple(i, x, y));
-            }
-        }
-        // Create an array to store centroids
-        const centroids = [];
-
-        // Create centroids with different colors
-        const centroidColors = [
-            { fill: '#FF9800', stroke: '#E65100' }, // Orange
-            { fill: '#9C27B0', stroke: '#6A1B9A' }, // Purple
-            { fill: '#009688', stroke: '#00695C' }  // Teal
-        ];
-
-        for (let i = 0; i < config.numCentroids; i++) {
-            // Create a centroid - a central point that all particles will be connected to
-            const centroid = Bodies.circle(
-                100 + (i * 50), // Position centroids in the starting area
-                100 + (i * 50),
-                1, // 
-                {
-                    isStatic: false,
-                    render: {
-                        fillStyle: centroidColors[i].fill,
-                        strokeStyle: centroidColors[i].stroke,
-                        lineWidth: 1
-                    },
-                    // Add direction as a unit vector property
-                    direction: { 
-                        x: i === 0 ? 1 : (i === 1 ? 0 : -0.5), // Different initial directions
-                        y: i === 0 ? 0 : (i === 1 ? 1 : 0.5)
-                    }
-                }
-            );
+            const x = startX + Math.random() * spreadFactor;
+            const y = startY + Math.random() * spreadFactor;
             
-            // Add centroid to the world and to our array
-            Composite.add(engine.world, centroid);
-            centroids.push(centroid);
-        }
-
-        // Create springs between centroids to keep them separated
-        for (let i = 0; i < centroids.length; i++) {
-            for (let j = i + 1; j < centroids.length; j++) {
-                // Create a spring between centroid i and centroid j
-                const springBetweenCentroids = Constraint.create({
-                    bodyA: centroids[i],
-                    bodyB: centroids[j],
-                    stiffness: 0.001, // Low stiffness for flexible movement
-                    damping: 0.05,    // Some damping to prevent excessive oscillation
-                    length: 200,      // Keep centroids at a reasonable distance
-                    render: {
-                        type: 'line',
-                        anchors: false,
-                        strokeStyle: '#FFFFFF', // White color for centroid springs
-                        lineWidth: 0.5,         // Thin line
-                        opacity: 0.5           // Semi-transparent
-                    }
-                });
-                
-                // Add the spring to the world
-                Composite.add(engine.world, springBetweenCentroids);
-            }
-        }
-        // Create all couples
-        createCouples();
+            return new Couple(i, x, y);
+        });
         
-        // Bind all particles in each couple to centroids with visual indication of influence
-        for (let i = 0; i < config.numCouples; i++) {
-            // Connect to all centroids
-            for (let j = 0; j < centroids.length; j++) {
-                const centroid = centroids[j];
-                const influenceWeight = couples[i].centroidWeights[j];
-                
-                // Calculate spring properties based on influence weight
-                // Higher influence = stronger connection (thicker line, different stiffness)
-                const lineWidth = 0.123 + (influenceWeight * 0.2); // Thicker lines for stronger influence
-                const stiffness = config.physics.stiffness * 0.1 * influenceWeight;
-                
-                // Generate color based on centroid color and influence
-                // This creates a visual indication of which centroid has more influence
-                const baseColor = centroidColors[j];
-                const rgbMatch = baseColor.fill.match(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
-                let color;
-                
-                if (rgbMatch) {
-                    // Convert hex to rgb and use opacity based on influence
-                    const r = parseInt(rgbMatch[1], 16);
-                    const g = parseInt(rgbMatch[2], 16);
-                    const b = parseInt(rgbMatch[3], 16);
-                    color = `rgba(${r}, ${g}, ${b}, ${influenceWeight})`;
-                } else {
-                    // Fallback if color parsing fails
-                    color = baseColor.fill;
-                }
-                
-                // Bind the active particle to the centroid
-                bindToCentroid(couples[i].activeParticle, centroid, {
-                    equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: stiffness,
-                    color: color,
-                    lineWidth: lineWidth
-                });
-                
-                // Also bind the inactive particle to the centroid
-                bindToCentroid(couples[i].inactiveParticle, centroid, {
-                    equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: stiffness,
-                    color: color,
-                    lineWidth: lineWidth
-                });
-            }
-        }
-        
-        // Run the renderer and engine
-        Render.run(render);
-        Runner.run(Runner.create(), engine);
-        
-        // Function to update centroid directions independently
+        // Function to update centroid directions
         function updateCentroidDirections() {
-            // Update each centroid's direction independently
             centroids.forEach(centroid => {
-                // Change direction gradually
-                // Create a small random change in direction
-                const angleChange = (Math.random() - 0.5) * 0.1; // Small random angle change
+                // Change direction gradually with a small random angle change
+                const angleChange = (Math.random() - 0.5) * 0.5;
                 
-                // Get current direction
+                // Get current direction and calculate angle
                 const currentX = centroid.direction.x;
                 const currentY = centroid.direction.y;
-                
-                // Calculate current angle
                 let angle = Math.atan2(currentY, currentX);
                 
-                // Apply change
+                // Apply change and update direction
                 angle += angleChange;
-                
-                // Update direction (keeping it as a unit vector)
                 centroid.direction.x = Math.cos(angle);
                 centroid.direction.y = Math.sin(angle);
-          
-            
-         
             });
         }
         
@@ -532,12 +416,15 @@
             updateCentroidDirections();
         });
         
-        // Add some text instructions
+        // Run the renderer and engine
+        Render.run(render);
+        Runner.run(Runner.create(), engine);
+        
+        // Set the render bounds
         Render.lookAt(render, {
             min: { x: 0, y: 0 },
-            max: { x: config.canvasWidth, y: config.canvasHeight }
+            max: { x: config.canvas.width, y: config.canvas.height }
         });
-    
     </script>
 </body>
 </html>
