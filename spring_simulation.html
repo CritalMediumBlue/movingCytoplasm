@@ -63,11 +63,12 @@
 
         // Configuration
         const config = {
-            numCouples: 25,
+            numCouples: 50,
+            numCentroids: 2,
             canvasWidth: 800,
             canvasHeight: 800,
             equilibriumLength: 20,
-            particleRadius: 5,
+            particleRadius: 2,
             colors: {
                 active: {
                     fill: '#4285F4',
@@ -82,21 +83,21 @@
             physics: {
                 restitution: 0.8,
                 friction: 0.005,
-                stiffness: 0.001,
+                stiffness: 0.005,
                 damping: 0,
-                forceMultiplier: 0.0005
+                forceMultiplier: 0.00005
             }
         };
 
         // Calculate stretch threshold
-        const stretchThreshold = config.equilibriumLength * 1.8;
+        const stretchThreshold = config.equilibriumLength * 2;
 
         // Create walls to keep particles within bounds
         const walls = [
-            Bodies.rectangle(0, config.canvasHeight/2, 10, config.canvasHeight, { isStatic: true }),     // left
-            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 10, config.canvasHeight, { isStatic: true }),   // right
-            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 10, { isStatic: true }),     // top
-            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 10, { isStatic: true })    // bottom
+            Bodies.rectangle(0, config.canvasHeight/2, 56.3, config.canvasHeight, { isStatic: true }),     // left
+            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 56.3, config.canvasHeight, { isStatic: true }),   // right
+            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 56.3, { isStatic: true }),     // top
+            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 56.3, { isStatic: true })    // bottom
         ];
 
         // Add walls to the world
@@ -153,7 +154,7 @@
                     render: {
                         fillStyle: colorSet.fill,
                         strokeStyle: colorSet.stroke,
-                        lineWidth: 2
+                        lineWidth: 1
                     },
                     coupleId: this.id // Store reference to the couple
                 });
@@ -174,11 +175,38 @@
                 return Math.sqrt(dx * dx + dy * dy);
             }
             
-            // Apply random motion to a particle
+            // Apply random motion to a particle with directional bias from centroid
             applyRandomMotion() {
                 const force = config.physics.forceMultiplier;
-                const forceX = (Math.random() - 0.5) * force;
-                const forceY = (Math.random() - 0.5) * force;
+                
+                // Get random components
+                let forceX = (Math.random() - 0.5) * force;
+                let forceY = (Math.random() - 0.5) * force;
+                
+            // Apply bias based on nearest centroid direction
+            // Bias strength (0.5 means 50% random, 50% biased toward direction)
+            const biasStrength = 0.5;
+            
+            // Find the nearest centroid
+            let nearestCentroid = centroids[0];
+            let minDistance = Number.MAX_VALUE;
+            
+            for (let i = 0; i < centroids.length; i++) {
+                const distance = this.calculateDistance(
+                    this.activeParticle.position,
+                    centroids[i].position
+                );
+                
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestCentroid = centroids[i];
+                }
+            }
+            
+            // Add bias component
+            forceX = forceX * (1 - biasStrength) + nearestCentroid.direction.x * force * biasStrength;
+            forceY = forceY * (1 - biasStrength) + nearestCentroid.direction.y * force * biasStrength;
+                
                 Body.applyForce(
                     this.activeParticle, 
                     this.activeParticle.position, 
@@ -220,11 +248,11 @@
         const couples = [];
         
         // Function to bind two couples with a spring
-        function bindCouples(couple1, couple2, options = {}) {
+        function bindToCentroid(couple1, centroid, options = {}) {
             // Default options
             const springOptions = {
                 equilibriumLength: options.equilibriumLength || config.equilibriumLength * 2,
-                stiffness: options.stiffness || config.physics.stiffness * 0.5,
+                stiffness: config.physics.stiffness * 0.5,
                 damping: options.damping || config.physics.damping,
                 color: options.color || '#9C27B0', // Purple color for inter-couple springs
                 lineWidth: options.lineWidth || 1
@@ -234,7 +262,7 @@
             // Create spring constraint between the active particles of both couples
             const interCoupleSpring = Constraint.create({
                 bodyA: couple1.activeParticle,
-                bodyB: couple2.inactiveParticle,
+                bodyB: centroid,    
                 stiffness: springOptions.stiffness,
                 damping: springOptions.damping,
                 length: springOptions.equilibriumLength,
@@ -257,43 +285,112 @@
         function createCouples() {
             for (let i = 0; i < config.numCouples; i++) {
               
-                const x = config.canvasWidth / 2 ;
-                const y = config.canvasHeight / 2;
+                const x = config.canvasWidth / 2 + Math.random() * 200 - 100;
+                const y = config.canvasHeight / 2 + Math.random() * 200 - 100;
              
                 // Create couple and add to array
                 couples.push(new Couple(i, x, y));
             }
         }
-        
+// Create an array to store centroids
+const centroids = [];
+
+for (let i = 0; i < config.numCentroids; i++) {
+    // Create a centroid - a central point that all particles will be connected to
+    const centroid = Bodies.circle(
+        config.canvasWidth / 2 + (i === 0 ? -100 : 100), // Position centroids apart from each other
+        config.canvasHeight / 2,
+        5, // slightly larger radius for visibility
+        {
+            isStatic: false,
+            render: {
+                fillStyle: i === 0 ? '#9C27B0' : '#FF9800', // Different colors for each centroid
+                strokeStyle: i === 0 ? '#6A1B9A' : '#E65100',
+                lineWidth: 1
+            },
+            // Add direction as a unit vector property
+            direction: { 
+                x: i === 0 ? -1 : 1, // Initial directions pointing opposite ways
+                y: 0 
+            }
+        }
+    );
+    
+    // Add centroid to the world and to our array
+    Composite.add(engine.world, centroid);
+    centroids.push(centroid);
+}
         // Create all couples
         createCouples();
         
-        // Create some example bindings between couples
-        // Bind a few random couples as an example
-        for (let i = 0; i < 500; i++) {
-            const coupleIndex1 = Math.floor(Math.random() * couples.length);
-            let coupleIndex2 = Math.floor(Math.random() * couples.length);
+        // Bind all particles in each couple to the centroids
+        for (let i = 0; i < config.numCouples; i++) {
+            // Determine which centroid to connect to based on couple index
+            // This will distribute connections evenly between centroids
+            const centroidIndex = i % config.numCentroids;
+            const centroid = centroids[centroidIndex];
             
-            // Make sure we don't bind a couple to itself
-            while (coupleIndex1 === coupleIndex2) {
-                coupleIndex2 = Math.floor(Math.random() * couples.length);
-            }
-            
-            // Bind the couples with custom properties
-            bindCouples(couples[coupleIndex1], couples[coupleIndex2], {
-                equilibriumLength: config.equilibriumLength *1.5,
-                stiffness: 0.000005
+            // Bind the active particle to the centroid
+            bindToCentroid(couples[i], centroid, {
+                equilibriumLength: config.equilibriumLength * 1.5,
+                stiffness: 0.0000001,
+                color: centroidIndex === 0 ? '#673AB7' : '#FF9800'
             });
+            
+            // Also bind the inactive particle to the centroid
+            const inactiveSpring = Constraint.create({
+                bodyA: couples[i].inactiveParticle,
+                bodyB: centroid,    
+                stiffness: config.physics.stiffness * 0.8,
+                damping: config.physics.damping,
+                length: config.equilibriumLength * 1.5,
+                render: {
+                    type: 'line',
+                    anchors: false,
+                    strokeStyle: centroidIndex === 0 ? '#673AB7' : '#FF9800', // Different colors for each centroid
+                    lineWidth: 1
+                }
+            });
+            
+            // Add the spring to the world
+            Composite.add(engine.world, inactiveSpring);
         }
         
         // Run the renderer and engine
         Render.run(render);
         Runner.run(Runner.create(), engine);
         
+        // Function to update centroid directions
+        function updateCentroidDirections() {
+            // Update each centroid's direction
+            centroids.forEach(centroid => {
+                // Change direction gradually
+                // Create a small random change in direction
+                const angleChange = (Math.random() - 0.5) * 0.1; // Small random angle change
+                
+                // Get current direction
+                const currentX = centroid.direction.x;
+                const currentY = centroid.direction.y;
+                
+                // Calculate current angle
+                let angle = Math.atan2(currentY, currentX);
+                
+                // Apply change
+                angle += angleChange;
+                
+                // Update direction (keeping it as a unit vector)
+                centroid.direction.x = Math.cos(angle);
+                centroid.direction.y = Math.sin(angle);
+            });
+        }
+        
         // Add event listener for before update
         Events.on(engine, 'beforeUpdate', () => {
             // Update all couples
             couples.forEach(couple => couple.update());
+            
+            // Update centroid directions
+            updateCentroidDirections();
         });
     
     </script>
