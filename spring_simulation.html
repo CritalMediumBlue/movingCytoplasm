@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spring Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            display: block;
+        }
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+    
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="simulation-canvas"></div>
+    </div>
+
+    <!-- Include Matter.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    
+    <script>
+        // Module aliases for Matter.js
+        const Engine = Matter.Engine,
+              Render = Matter.Render,
+              Runner = Matter.Runner,
+              Bodies = Matter.Bodies,
+              Body = Matter.Body,
+              Composite = Matter.Composite,
+              Constraint = Matter.Constraint,
+              Events = Matter.Events,
+              Common = Matter.Common;
+
+        // Create engine
+        const engine = Engine.create();
+        engine.world.gravity.y = 0;
+
+        // Create renderer
+        const render = Render.create({
+            element: document.getElementById('simulation-canvas'),
+            engine: engine,
+            options: {
+                width: 800,
+                height: 800,
+                wireframes: false,
+                background: '#f0f0f0'
+            }
+        });
+
+        // Configuration
+        const config = {
+            numCouples: 25,
+            canvasWidth: 800,
+            canvasHeight: 800,
+            equilibriumLength: 20,
+            particleRadius: 5,
+            colors: {
+                active: {
+                    fill: '#4285F4',
+                    stroke: '#2A56C6'
+                },
+                inactive: {
+                    fill: '#EA4335',
+                    stroke: '#B31412'
+                },
+                spring: '#34A853'
+            },
+            physics: {
+                restitution: 0.8,
+                friction: 0.005,
+                stiffness: 0.001,
+                damping: 0,
+                forceMultiplier: 0.0005
+            }
+        };
+
+        // Calculate stretch threshold
+        const stretchThreshold = config.equilibriumLength * 1.8;
+
+        // Create walls to keep particles within bounds
+        const walls = [
+            Bodies.rectangle(0, config.canvasHeight/2, 10, config.canvasHeight, { isStatic: true }),     // left
+            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 10, config.canvasHeight, { isStatic: true }),   // right
+            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 10, { isStatic: true }),     // top
+            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 10, { isStatic: true })    // bottom
+        ];
+
+        // Add walls to the world
+        Composite.add(engine.world, walls);
+
+        // Couple class to manage a pair of particles and their spring
+        class Couple {
+            constructor(id, x, y) {
+                this.id = id;
+                
+                // Create particles
+                this.particleA = this.createParticle(
+                    x, 
+                    y, 
+                    true, // static
+                    config.colors.inactive
+                );
+                
+                this.particleB = this.createParticle(
+                    x + config.equilibriumLength, 
+                    y, 
+                    false, // not static
+                    config.colors.active
+                );
+                
+                // Create spring constraint between particles
+                this.spring = Constraint.create({
+                    bodyA: this.particleA,
+                    bodyB: this.particleB,
+                    stiffness: config.physics.stiffness,
+                    damping: config.physics.damping,
+                    length: config.equilibriumLength,
+                    render: {
+                        type: 'line',
+                        anchors: false, 
+                        strokeStyle: config.colors.spring,
+                        lineWidth: 1
+                    }
+                });
+                
+                // Track which particle is currently active
+                this.activeParticle = this.particleB;
+                this.inactiveParticle = this.particleA;
+                
+                // Add to world
+                Composite.add(engine.world, [this.particleA, this.particleB, this.spring]);
+            }
+            
+            createParticle(x, y, isStatic, colorSet) {
+                return Bodies.circle(x, y, config.particleRadius, {
+                    isStatic: isStatic,
+                    restitution: config.physics.restitution,
+                    friction: config.physics.friction,
+                    render: {
+                        fillStyle: colorSet.fill,
+                        strokeStyle: colorSet.stroke,
+                        lineWidth: 2
+                    },
+                    coupleId: this.id // Store reference to the couple
+                });
+            }
+            
+            // Calculate current spring length
+            getCurrentLength() {
+                return this.calculateDistance(
+                    this.particleA.position, 
+                    this.particleB.position
+                );
+            }
+            
+            // Calculate distance between two points
+            calculateDistance(pointA, pointB) {
+                const dx = pointB.x - pointA.x;
+                const dy = pointB.y - pointA.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+            
+            // Apply random motion to a particle
+            applyRandomMotion() {
+                const force = config.physics.forceMultiplier;
+                const forceX = (Math.random() - 0.5) * force;
+                const forceY = (Math.random() - 0.5) * force;
+                Body.applyForce(
+                    this.activeParticle, 
+                    this.activeParticle.position, 
+                    { x: forceX, y: forceY }
+                );
+            }
+            
+            // Swap active and inactive particles
+            swapActiveParticle() {
+                // Swap active and inactive particles
+                [this.activeParticle, this.inactiveParticle] = 
+                    [this.inactiveParticle, this.activeParticle];
+                
+                // Update physics properties
+                Body.setStatic(this.activeParticle, false);
+                Body.setStatic(this.inactiveParticle, true);
+                
+                // Update colors
+                this.activeParticle.render.fillStyle = config.colors.active.fill;
+                this.activeParticle.render.strokeStyle = config.colors.active.stroke;
+                this.inactiveParticle.render.fillStyle = config.colors.inactive.fill;
+                this.inactiveParticle.render.strokeStyle = config.colors.inactive.stroke;
+            }
+            
+            // Update the couple's state
+            update() {
+                // Check if spring is stretched beyond threshold
+                const currentLength = this.getCurrentLength();
+                if (currentLength > stretchThreshold) {
+                    this.swapActiveParticle();
+                }
+                
+                // Apply random motion to the active particle
+                this.applyRandomMotion();
+            }
+        }
+        
+        // Create array to store all couples
+        const couples = [];
+        
+        // Function to bind two couples with a spring
+        function bindCouples(couple1, couple2, options = {}) {
+            // Default options
+            const springOptions = {
+                equilibriumLength: options.equilibriumLength || config.equilibriumLength * 2,
+                stiffness: options.stiffness || config.physics.stiffness * 0.5,
+                damping: options.damping || config.physics.damping,
+                color: options.color || '#9C27B0', // Purple color for inter-couple springs
+                lineWidth: options.lineWidth || 1
+            };
+
+            
+            // Create spring constraint between the active particles of both couples
+            const interCoupleSpring = Constraint.create({
+                bodyA: couple1.activeParticle,
+                bodyB: couple2.inactiveParticle,
+                stiffness: springOptions.stiffness,
+                damping: springOptions.damping,
+                length: springOptions.equilibriumLength,
+                render: {
+                    type: 'line',
+                    anchors: false,
+                    strokeStyle: springOptions.color,
+                    lineWidth: springOptions.lineWidth
+                }
+            });
+            
+            // Add the spring to the world
+            Composite.add(engine.world, interCoupleSpring);
+            
+            // Return the spring for potential future reference
+            return interCoupleSpring;
+        }
+        
+        // Create couples with distributed positions
+        function createCouples() {
+            for (let i = 0; i < config.numCouples; i++) {
+              
+                const x = config.canvasWidth / 2 ;
+                const y = config.canvasHeight / 2;
+             
+                // Create couple and add to array
+                couples.push(new Couple(i, x, y));
+            }
+        }
+        
+        // Create all couples
+        createCouples();
+        
+        // Create some example bindings between couples
+        // Bind a few random couples as an example
+        for (let i = 0; i < 500; i++) {
+            const coupleIndex1 = Math.floor(Math.random() * couples.length);
+            let coupleIndex2 = Math.floor(Math.random() * couples.length);
+            
+            // Make sure we don't bind a couple to itself
+            while (coupleIndex1 === coupleIndex2) {
+                coupleIndex2 = Math.floor(Math.random() * couples.length);
+            }
+            
+            // Bind the couples with custom properties
+            bindCouples(couples[coupleIndex1], couples[coupleIndex2], {
+                equilibriumLength: config.equilibriumLength *1.5,
+                stiffness: 0.000005
+            });
+        }
+        
+        // Run the renderer and engine
+        Render.run(render);
+        Runner.run(Runner.create(), engine);
+        
+        // Add event listener for before update
+        Events.on(engine, 'beforeUpdate', () => {
+            // Update all couples
+            couples.forEach(couple => couple.update());
+        });
+    
+    </script>
+</body>
+</html>
