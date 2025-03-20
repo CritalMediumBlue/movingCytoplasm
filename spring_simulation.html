@@ -54,8 +54,8 @@
             element: document.getElementById('simulation-canvas'),
             engine: engine,
             options: {
-                width: 800,
-                height: 800,
+                width: 1500,
+                height: 1100,
                 wireframes: false,
                 background: '#f0f0f0'
             }
@@ -64,9 +64,9 @@
         // Configuration
         const config = {
             numCouples: 50,
-            numCentroids: 2,
-            canvasWidth: 800,
-            canvasHeight: 800,
+            numCentroids: 3,
+            canvasWidth: 1500,
+            canvasHeight: 1100,
             equilibriumLength: 20,
             particleRadius: 2,
             colors: {
@@ -94,14 +94,66 @@
 
         // Create walls to keep particles within bounds
         const walls = [
-            Bodies.rectangle(0, config.canvasHeight/2, 56.3, config.canvasHeight, { isStatic: true }),     // left
-            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 56.3, config.canvasHeight, { isStatic: true }),   // right
-            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 56.3, { isStatic: true }),     // top
-            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 56.3, { isStatic: true })    // bottom
+            Bodies.rectangle(0, config.canvasHeight/2, 56.3, config.canvasHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#333333' }
+            }),     // left
+            Bodies.rectangle(config.canvasWidth, config.canvasHeight/2, 56.3, config.canvasHeight, { 
+                isStatic: true,
+                render: { fillStyle: '#333333' }
+            }),   // right
+            Bodies.rectangle(config.canvasWidth/2, 0, config.canvasWidth, 56.3, { 
+                isStatic: true,
+                render: { fillStyle: '#333333' }
+            }),     // top
+            Bodies.rectangle(config.canvasWidth/2, config.canvasHeight, config.canvasWidth, 56.3, { 
+                isStatic: true,
+                render: { fillStyle: '#333333' }
+            })    // bottom
         ];
 
-        // Add walls to the world
-        Composite.add(engine.world, walls);
+        // Create maze walls and obstacles - simplified version
+        const mazeElements = [];
+        
+ 
+  
+
+        
+        // Add just a few interesting static objects
+        
+        // Circular obstacles - reduced number
+        const circles = [
+            { x: 400, y: 400, radius: 150 },
+            { x: 1100, y: 400, radius: 100 },
+            { x: 750, y: 550, radius: 150 },
+            { x: 1000, y: 800, radius: 150 },
+            { x: 200, y: 800, radius: 150 },
+            { x: 500, y: 200, radius: 100 },
+            { x: 900, y: 200, radius: 100 },
+            { x: 200, y: 600, radius: 100 },
+            { x: 1100, y: 600, radius: 100 },
+            { x: 750, y: 900, radius: 100 }
+        ];
+        
+        circles.forEach(circle => {
+            mazeElements.push(
+                Bodies.circle(circle.x, circle.y, circle.radius, {
+                    isStatic: true,
+                    render: { 
+                        fillStyle: '#8BC34A',
+                        strokeStyle: '#689F38',
+                        lineWidth: 2
+                    }
+                })
+            );
+        });
+        
+   
+        
+  
+        
+        // Add all maze elements to the world
+        Composite.add(engine.world, [...walls, ...mazeElements]);
 
         // Couple class to manage a pair of particles and their spring
         class Couple {
@@ -182,10 +234,13 @@
                 // Get random components
                 let forceX = (Math.random() - 0.5) * force;
                 let forceY = (Math.random() - 0.5) * force;
+
+               
+
                 
             // Apply bias based on both centroids' directions
             // Bias strength (0.5 means 50% random, 50% biased toward direction)
-            const biasStrength = 0.25;
+            const biasStrength = 0.3;
             
             // Calculate combined influence from both centroids
             let combinedDirectionX = 0;
@@ -271,15 +326,14 @@
             // Default options
             const springOptions = {
                 equilibriumLength: options.equilibriumLength || config.equilibriumLength * 2,
-                stiffness: config.physics.stiffness * 0.1*Math.random(),
+                stiffness: config.physics.stiffness *0.1*Math.random(),
                 damping: options.damping || config.physics.damping,
                 color: options.color || '#9C27B0', // Purple color for inter-couple springs
                 lineWidth: 0.123
             };
 
             
-            // Create spring constraint between the active particles of both couples
-            const interCoupleSpring = Constraint.create({
+            const springToCentroid = Constraint.create({
                 bodyA: particle,
                 bodyB: centroid,    
                 stiffness: springOptions.stiffness,
@@ -294,51 +348,55 @@
             });
             
             // Add the spring to the world
-            Composite.add(engine.world, interCoupleSpring);
+            Composite.add(engine.world, springToCentroid);
             
             // Return the spring for potential future reference
-            return interCoupleSpring;
+            return springToCentroid;
         }
         
         // Create couples with distributed positions
         function createCouples() {
+            // Start all couples in a clear area near the top left
+            const startX = 100;
+            const startY = 100;
+            const spreadFactor = 50;
+            
             for (let i = 0; i < config.numCouples; i++) {
-              
-                const x = config.canvasWidth / 2 + Math.random() * 200 - 100;
-                const y = config.canvasHeight / 2 + Math.random() * 200 - 100;
-             
+                // Create a more clustered starting position
+                const x = startX + Math.random() * spreadFactor;
+                const y = startY + Math.random() * spreadFactor;
+                
                 // Create couple and add to array
                 couples.push(new Couple(i, x, y));
             }
         }
-// Create an array to store centroids
-const centroids = [];
+        // Create an array to store centroids
+        const centroids = [];
 
-for (let i = 0; i < config.numCentroids; i++) {
-    // Create a centroid - a central point that all particles will be connected to
-    const centroid = Bodies.circle(
-        config.canvasWidth / 2 + (i === 0 ? -100 : 100), // Position centroids apart from each other
-        config.canvasHeight / 2,
-        5, // slightly larger radius for visibility
-        {
-            isStatic: false,
-            render: {
-                fillStyle: i === 0 ? '#9C27B0' : '#FF9800', // Different colors for each centroid
-                strokeStyle: i === 0 ? '#6A1B9A' : '#E65100',
-                lineWidth: 0.123
-            },
-            // Add direction as a unit vector property
-            direction: { 
-                x: i === 0 ? -1 : 1, // Initial directions pointing opposite ways
-                y: 0 
-            }
+        for (let i = 0; i < config.numCentroids; i++) {
+            // Create a centroid - a central point that all particles will be connected to
+            const centroid = Bodies.circle(
+                100 + (i * 50), // Position centroids in the starting area
+                100 + (i * 50),
+                3, // slightly larger radius for visibility
+                {
+                    isStatic: false,
+                    render: {
+                        fillStyle: '#FF9800', // Different colors for each centroid
+                        strokeStyle:'#E65100'
+                    },
+                    // Add direction as a unit vector property
+                    direction: { 
+                        x: i === 0 ? 1 : (i === 1 ? 0 : -0.5), // Different initial directions
+                        y: i === 0 ? 0 : (i === 1 ? 1 : 0.5)
+                    }
+                }
+            );
+            
+            // Add centroid to the world and to our array
+            Composite.add(engine.world, centroid);
+            centroids.push(centroid);
         }
-    );
-    
-    // Add centroid to the world and to our array
-    Composite.add(engine.world, centroid);
-    centroids.push(centroid);
-}
         // Create all couples
         createCouples();
         
@@ -351,14 +409,14 @@ for (let i = 0; i < config.numCentroids; i++) {
                 // Bind the active particle to the centroid
                 bindToCentroid(couples[i].activeParticle, centroid, {
                     equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: 0.0000001,
+                    stiffness: config.physics.stiffness * 0.1*Math.random(),
                     color: j === 0 ? '#673AB7' : '#FF9800'
                 });
                 
                 // Also bind the inactive particle to the centroid
                 bindToCentroid(couples[i].inactiveParticle, centroid, {
                     equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: 0.0000001,
+                    stiffness: config.physics.stiffness * 0.1*Math.random(),
                     color: j === 0 ? '#673AB7' : '#FF9800'
                 });
                 
@@ -375,7 +433,7 @@ for (let i = 0; i < config.numCentroids; i++) {
             centroids.forEach(centroid => {
                 // Change direction gradually
                 // Create a small random change in direction
-                const angleChange = (Math.random() - 0.5) * 0.2; // Small random angle change
+                const angleChange = (Math.random() - 0.5) * 0.1; // Small random angle change
                 
                 // Get current direction
                 const currentX = centroid.direction.x;
@@ -390,6 +448,9 @@ for (let i = 0; i < config.numCentroids; i++) {
                 // Update direction (keeping it as a unit vector)
                 centroid.direction.x = Math.cos(angle);
                 centroid.direction.y = Math.sin(angle);
+          
+            
+         
             });
         }
         
@@ -400,6 +461,12 @@ for (let i = 0; i < config.numCentroids; i++) {
             
             // Update centroid directions
             updateCentroidDirections();
+        });
+        
+        // Add some text instructions
+        Render.lookAt(render, {
+            min: { x: 0, y: 0 },
+            max: { x: config.canvasWidth, y: config.canvasHeight }
         });
     
     </script>
