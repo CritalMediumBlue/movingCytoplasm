@@ -83,8 +83,8 @@
             physics: {
                 restitution: 0.8,
                 friction: 0.005,
-                stiffness: 0.005,
-                damping: 0,
+                stiffness: 0.0005,
+                damping: 1,
                 forceMultiplier: 0.00005
             }
         };
@@ -194,6 +194,15 @@
                 this.activeParticle = this.particleB;
                 this.inactiveParticle = this.particleA;
                 
+                // Initialize centroid influence weights
+                // Each couple will have different weights for each centroid
+                this.centroidWeights = [];
+                for (let i = 0; i < config.numCentroids; i++) {
+                    // Generate random weights between 0.1 and 1.0
+                    // This creates varied influence patterns
+                    this.centroidWeights.push(0.1 + Math.random() * 0.9);
+                }
+                
                 // Add to world
                 Composite.add(engine.world, [this.particleA, this.particleB, this.spring]);
             }
@@ -234,52 +243,56 @@
                 // Get random components
                 let forceX = (Math.random() - 0.5) * force;
                 let forceY = (Math.random() - 0.5) * force;
-
-               
-
                 
-            // Apply bias based on both centroids' directions
-            // Bias strength (0.5 means 50% random, 50% biased toward direction)
-            const biasStrength = 0.3;
-            
-            // Calculate combined influence from both centroids
-            let combinedDirectionX = 0;
-            let combinedDirectionY = 0;
-            
-            // Weight the influence of each centroid based on distance
-            let totalWeight = 0;
-            
-            for (let i = 0; i < centroids.length; i++) {
-                const distance = this.calculateDistance(
-                    this.activeParticle.position,
-                    centroids[i].position
-                );
+                // Apply bias based on centroids' directions with individual influence weights
+                // Bias strength (0.3 means 30% biased toward direction, 70% random)
+                const biasStrength = 0.3;
                 
-                // Inverse distance weighting - closer centroids have more influence
-                const weight = 1 / Math.max(distance, 0.1); // Avoid division by zero
-                totalWeight += weight;
+                // Calculate combined influence from centroids using the couple's specific weights
+                let combinedDirectionX = 0;
+                let combinedDirectionY = 0;
                 
-                // Add weighted contribution from this centroid
-                combinedDirectionX += centroids[i].direction.x * weight;
-                combinedDirectionY += centroids[i].direction.y * weight;
-            }
-            
-            // Normalize the combined direction
-            if (totalWeight > 0) {
-                combinedDirectionX /= totalWeight;
-                combinedDirectionY /= totalWeight;
+                // Track total effective weight for normalization
+                let totalEffectiveWeight = 0;
                 
-                // Normalize to unit vector
-                const magnitude = Math.sqrt(combinedDirectionX * combinedDirectionX + combinedDirectionY * combinedDirectionY);
-                if (magnitude > 0) {
-                    combinedDirectionX /= magnitude;
-                    combinedDirectionY /= magnitude;
+                for (let i = 0; i < centroids.length; i++) {
+                    // Get this couple's specific weight for this centroid
+                    const coupleSpecificWeight = this.centroidWeights[i];
+                    
+                    // Also factor in distance (closer centroids still have more influence)
+                    const distance = this.calculateDistance(
+                        this.activeParticle.position,
+                        centroids[i].position
+                    );
+                    
+                    // Combine distance-based weight with couple-specific weight
+                    // This creates a more complex and interesting influence pattern
+                    const distanceWeight = 1 / Math.max(distance, 0.1); // Avoid division by zero
+                    const effectiveWeight = coupleSpecificWeight * distanceWeight;
+                    
+                    totalEffectiveWeight += effectiveWeight;
+                    
+                    // Add weighted contribution from this centroid
+                    combinedDirectionX += centroids[i].direction.x * effectiveWeight;
+                    combinedDirectionY += centroids[i].direction.y * effectiveWeight;
                 }
-            }
-            
-            // Add bias component
-            forceX = forceX * (1 - biasStrength) + combinedDirectionX * force * biasStrength;
-            forceY = forceY * (1 - biasStrength) + combinedDirectionY * force * biasStrength;
+                
+                // Normalize the combined direction
+                if (totalEffectiveWeight > 0) {
+                    combinedDirectionX /= totalEffectiveWeight;
+                    combinedDirectionY /= totalEffectiveWeight;
+                    
+                    // Normalize to unit vector
+                    const magnitude = Math.sqrt(combinedDirectionX * combinedDirectionX + combinedDirectionY * combinedDirectionY);
+                    if (magnitude > 0) {
+                        combinedDirectionX /= magnitude;
+                        combinedDirectionY /= magnitude;
+                    }
+                }
+                
+                // Add bias component
+                forceX = forceX * (1 - biasStrength) + combinedDirectionX * force * biasStrength;
+                forceY = forceY * (1 - biasStrength) + combinedDirectionY * force * biasStrength;
                 
                 Body.applyForce(
                     this.activeParticle, 
@@ -326,7 +339,7 @@
             // Default options
             const springOptions = {
                 equilibriumLength: options.equilibriumLength || config.equilibriumLength * 2,
-                stiffness: config.physics.stiffness *0.1*Math.random(),
+                stiffness: config.physics.stiffness *1*Math.random(),
                 damping: options.damping || config.physics.damping,
                 color: options.color || '#9C27B0', // Purple color for inter-couple springs
                 lineWidth: 0.123
@@ -373,17 +386,25 @@
         // Create an array to store centroids
         const centroids = [];
 
+        // Create centroids with different colors
+        const centroidColors = [
+            { fill: '#FF9800', stroke: '#E65100' }, // Orange
+            { fill: '#9C27B0', stroke: '#6A1B9A' }, // Purple
+            { fill: '#009688', stroke: '#00695C' }  // Teal
+        ];
+
         for (let i = 0; i < config.numCentroids; i++) {
             // Create a centroid - a central point that all particles will be connected to
             const centroid = Bodies.circle(
                 100 + (i * 50), // Position centroids in the starting area
                 100 + (i * 50),
-                3, // slightly larger radius for visibility
+                1, // 
                 {
                     isStatic: false,
                     render: {
-                        fillStyle: '#FF9800', // Different colors for each centroid
-                        strokeStyle:'#E65100'
+                        fillStyle: centroidColors[i].fill,
+                        strokeStyle: centroidColors[i].stroke,
+                        lineWidth: 1
                     },
                     // Add direction as a unit vector property
                     direction: { 
@@ -397,29 +418,77 @@
             Composite.add(engine.world, centroid);
             centroids.push(centroid);
         }
+
+        // Create springs between centroids to keep them separated
+        for (let i = 0; i < centroids.length; i++) {
+            for (let j = i + 1; j < centroids.length; j++) {
+                // Create a spring between centroid i and centroid j
+                const springBetweenCentroids = Constraint.create({
+                    bodyA: centroids[i],
+                    bodyB: centroids[j],
+                    stiffness: 0.001, // Low stiffness for flexible movement
+                    damping: 0.05,    // Some damping to prevent excessive oscillation
+                    length: 200,      // Keep centroids at a reasonable distance
+                    render: {
+                        type: 'line',
+                        anchors: false,
+                        strokeStyle: '#FFFFFF', // White color for centroid springs
+                        lineWidth: 0.5,         // Thin line
+                        opacity: 0.5           // Semi-transparent
+                    }
+                });
+                
+                // Add the spring to the world
+                Composite.add(engine.world, springBetweenCentroids);
+            }
+        }
         // Create all couples
         createCouples();
         
-        // Bind all particles in each couple to both centroids
+        // Bind all particles in each couple to centroids with visual indication of influence
         for (let i = 0; i < config.numCouples; i++) {
-            // Connect to both centroids
+            // Connect to all centroids
             for (let j = 0; j < centroids.length; j++) {
                 const centroid = centroids[j];
+                const influenceWeight = couples[i].centroidWeights[j];
+                
+                // Calculate spring properties based on influence weight
+                // Higher influence = stronger connection (thicker line, different stiffness)
+                const lineWidth = 0.123 + (influenceWeight * 0.2); // Thicker lines for stronger influence
+                const stiffness = config.physics.stiffness * 0.1 * influenceWeight;
+                
+                // Generate color based on centroid color and influence
+                // This creates a visual indication of which centroid has more influence
+                const baseColor = centroidColors[j];
+                const rgbMatch = baseColor.fill.match(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+                let color;
+                
+                if (rgbMatch) {
+                    // Convert hex to rgb and use opacity based on influence
+                    const r = parseInt(rgbMatch[1], 16);
+                    const g = parseInt(rgbMatch[2], 16);
+                    const b = parseInt(rgbMatch[3], 16);
+                    color = `rgba(${r}, ${g}, ${b}, ${influenceWeight})`;
+                } else {
+                    // Fallback if color parsing fails
+                    color = baseColor.fill;
+                }
                 
                 // Bind the active particle to the centroid
                 bindToCentroid(couples[i].activeParticle, centroid, {
                     equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: config.physics.stiffness * 0.1*Math.random(),
-                    color: j === 0 ? '#673AB7' : '#FF9800'
+                    stiffness: stiffness,
+                    color: color,
+                    lineWidth: lineWidth
                 });
                 
                 // Also bind the inactive particle to the centroid
                 bindToCentroid(couples[i].inactiveParticle, centroid, {
                     equilibriumLength: config.equilibriumLength * 1.5,
-                    stiffness: config.physics.stiffness * 0.1*Math.random(),
-                    color: j === 0 ? '#673AB7' : '#FF9800'
+                    stiffness: stiffness,
+                    color: color,
+                    lineWidth: lineWidth
                 });
-                
             }
         }
         
