@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bird Flocking Simulation (Vicsek Model)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+        }
+        .container {
+            width: 100%;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+        .value-display {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 3px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            max-width: 800px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bird Flocking Simulation (Vicsek Model)</h1>
+        <p>
+            This simulation demonstrates the Vicsek model, which shows how local alignment rules can lead to 
+            global order in a system of self-propelled particles, similar to bird flocking behavior.
+        </p>
+        
+        <canvas id="simulation-canvas" width="800" height="600"></canvas>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="num-particles">Number of Birds</label>
+                <input type="range" id="num-particles" min="10" max="500" value="200" step="10">
+                <div class="value-display" id="num-particles-value">200</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="interaction-radius">Interaction Radius</label>
+                <input type="range" id="interaction-radius" min="10" max="100" value="50" step="5">
+                <div class="value-display" id="interaction-radius-value">50</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="alignment-strength">Alignment Strength</label>
+                <input type="range" id="alignment-strength" min="0" max="1" value="0.5" step="0.05">
+                <div class="value-display" id="alignment-strength-value">0.5</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="noise-level">Noise Level</label>
+                <input type="range" id="noise-level" min="0" max="1" value="0.1" step="0.05">
+                <div class="value-display" id="noise-level-value">0.1</div>
+            </div>
+            
+            <div class="control-group">
+                <label for="speed">Speed</label>
+                <input type="range" id="speed" min="0.5" max="5" value="2" step="0.1">
+                <div class="value-display" id="speed-value">2</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('simulation-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Configuration
+        const config = {
+            numParticles: 200,
+            interactionRadius: 50,
+            alignmentStrength: 0.5,
+            noiseLevel: 0.1,
+            speed: 2,
+            particleSize: 5,
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            colors: {
+                particle: '#3498db',
+                background: '#f0f0f0',
+                interactionRadius: 'rgba(52, 152, 219, 0.1)'
+            }
+        };
+        
+        // Particle class
+        class Particle {
+            constructor(x, y, angle) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle; // Direction of movement in radians
+                this.vx = Math.cos(angle) * config.speed;
+                this.vy = Math.sin(angle) * config.speed;
+                this.neighbors = []; // Will store references to neighboring particles
+            }
+            
+            // Update particle position
+            move() {
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Wrap around canvas boundaries (toroidal boundary conditions)
+                if (this.x < 0) this.x += config.canvasWidth;
+                if (this.x > config.canvasWidth) this.x -= config.canvasWidth;
+                if (this.y < 0) this.y += config.canvasHeight;
+                if (this.y > config.canvasHeight) this.y -= config.canvasHeight;
+            }
+            
+            // Find neighbors within interaction radius
+            findNeighbors(particles) {
+                this.neighbors = [];
+                
+                for (const particle of particles) {
+                    if (particle === this) continue; // Skip self
+                    
+                    // Calculate distance considering toroidal boundaries
+                    const dx = Math.min(
+                        Math.abs(this.x - particle.x),
+                        config.canvasWidth - Math.abs(this.x - particle.x)
+                    );
+                    
+                    const dy = Math.min(
+                        Math.abs(this.y - particle.y),
+                        config.canvasHeight - Math.abs(this.y - particle.y)
+                    );
+                    
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance <= config.interactionRadius) {
+                        this.neighbors.push(particle);
+                    }
+                }
+            }
+            
+            // Update direction based on neighbors (Vicsek model)
+            updateDirection() {
+                if (this.neighbors.length === 0) return;
+                
+                // Calculate average direction of neighbors
+                let avgSin = 0;
+                let avgCos = 0;
+                
+                for (const neighbor of this.neighbors) {
+                    avgSin += Math.sin(neighbor.angle);
+                    avgCos += Math.cos(neighbor.angle);
+                }
+                
+                avgSin /= this.neighbors.length;
+                avgCos /= this.neighbors.length;
+                
+                // Calculate average angle
+                let avgAngle = Math.atan2(avgSin, avgCos);
+                
+                // Add noise
+                avgAngle += (Math.random() * 2 - 1) * config.noiseLevel * Math.PI;
+                
+                // Interpolate between current angle and average angle based on alignment strength
+                this.angle = (1 - config.alignmentStrength) * this.angle + config.alignmentStrength * avgAngle;
+                
+                // Update velocity based on new angle
+                this.vx = Math.cos(this.angle) * config.speed;
+                this.vy = Math.sin(this.angle) * config.speed;
+            }
+            
+            // Draw particle
+            draw(ctx, showInteractionRadius = false) {
+                // Draw interaction radius (for selected particles only)
+                if (showInteractionRadius) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, config.interactionRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = config.colors.interactionRadius;
+                    ctx.fill();
+                }
+                
+                // Draw particle as a triangle pointing in the direction of movement
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                ctx.beginPath();
+                ctx.moveTo(config.particleSize * 1.5, 0);
+                ctx.lineTo(-config.particleSize, -config.particleSize);
+                ctx.lineTo(-config.particleSize, config.particleSize);
+                ctx.closePath();
+                
+                ctx.fillStyle = config.colors.particle;
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        // Create particles
+        let particles = [];
+        
+        function initializeParticles() {
+            particles = [];
+            for (let i = 0; i < config.numParticles; i++) {
+                const x = Math.random() * config.canvasWidth;
+                const y = Math.random() * config.canvasHeight;
+                const angle = Math.random() * Math.PI * 2; // Random direction
+                particles.push(new Particle(x, y, angle));
+            }
+        }
+        
+        // Update simulation
+        function update() {
+            // Find neighbors for each particle
+            for (const particle of particles) {
+                particle.findNeighbors(particles);
+            }
+            
+            // Update directions based on neighbors
+            for (const particle of particles) {
+                particle.updateDirection();
+            }
+            
+            // Move particles
+            for (const particle of particles) {
+                particle.move();
+            }
+        }
+        
+        // Draw simulation
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = config.colors.background;
+            ctx.fillRect(0, 0, config.canvasWidth, config.canvasHeight);
+            
+            // Draw particles
+            for (const particle of particles) {
+                particle.draw(ctx);
+            }
+            
+            // Optionally show interaction radius for a sample particle
+            if (particles.length > 0) {
+                particles[0].draw(ctx, true);
+            }
+        }
+        
+        // Animation loop
+        function animate() {
+            update();
+            draw();
+            requestAnimationFrame(animate);
+        }
+        
+        // Initialize and start simulation
+        initializeParticles();
+        animate();
+        
+        // UI Controls
+        const numParticlesSlider = document.getElementById('num-particles');
+        const numParticlesValue = document.getElementById('num-particles-value');
+        numParticlesSlider.addEventListener('input', () => {
+            config.numParticles = parseInt(numParticlesSlider.value);
+            numParticlesValue.textContent = config.numParticles;
+            initializeParticles();
+        });
+        
+        const interactionRadiusSlider = document.getElementById('interaction-radius');
+        const interactionRadiusValue = document.getElementById('interaction-radius-value');
+        interactionRadiusSlider.addEventListener('input', () => {
+            config.interactionRadius = parseInt(interactionRadiusSlider.value);
+            interactionRadiusValue.textContent = config.interactionRadius;
+        });
+        
+        const alignmentStrengthSlider = document.getElementById('alignment-strength');
+        const alignmentStrengthValue = document.getElementById('alignment-strength-value');
+        alignmentStrengthSlider.addEventListener('input', () => {
+            config.alignmentStrength = parseFloat(alignmentStrengthSlider.value);
+            alignmentStrengthValue.textContent = config.alignmentStrength.toFixed(2);
+        });
+        
+        const noiseLevelSlider = document.getElementById('noise-level');
+        const noiseLevelValue = document.getElementById('noise-level-value');
+        noiseLevelSlider.addEventListener('input', () => {
+            config.noiseLevel = parseFloat(noiseLevelSlider.value);
+            noiseLevelValue.textContent = config.noiseLevel.toFixed(2);
+        });
+        
+        const speedSlider = document.getElementById('speed');
+        const speedValue = document.getElementById('speed-value');
+        speedSlider.addEventListener('input', () => {
+            config.speed = parseFloat(speedSlider.value);
+            speedValue.textContent = config.speed.toFixed(1);
+            
+            // Update all particles' speeds
+            for (const particle of particles) {
+                particle.vx = Math.cos(particle.angle) * config.speed;
+                particle.vy = Math.sin(particle.angle) * config.speed;
+            }
+        });
+    </script>
+</body>
+</html>
