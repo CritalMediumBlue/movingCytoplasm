@@ -39,7 +39,7 @@
         // Configuration
         const config = {
             numCouples: 50,
-            numCentroids: 3,
+            numCentroids: 10,
             canvas: {
                 width: 1500,
                 height: 1100,
@@ -67,7 +67,15 @@
                 centroid: [
                     { fill: '#FF9800', stroke: '#E65100' }, // Orange
                     { fill: '#9C27B0', stroke: '#6A1B9A' }, // Purple
-                    { fill: '#009688', stroke: '#00695C' }  // Teal
+                    { fill: '#009688', stroke: '#00695C' },
+                    { fill: '#FFC107', stroke: '#FFA000' },
+                    { fill: '#3F51B5', stroke: '#303F9F' },
+                    { fill: '#FF9800', stroke: '#E65100' }, // Orange
+                    { fill: '#9C27B0', stroke: '#6A1B9A' }, // Purple
+                    { fill: '#009688', stroke: '#00695C' },
+                    { fill: '#FFC107', stroke: '#FFA000' },
+                    { fill: '#3F51B5', stroke: '#303F9F' }
+
                 ],
                 centroidSpring: '#FFFFFF'
             }
@@ -197,7 +205,7 @@
         for (let i = 0; i < centroids.length; i++) {
             for (let j = i + 1; j < centroids.length; j++) {
                 const centroidSpring = createConstraint(centroids[i], centroids[j], {
-                    stiffness: 0.005,
+                    stiffness: 0.0001,
                     damping: 0.05,
                     length: 100,
                     color: config.colors.centroidSpring,
@@ -261,8 +269,8 @@
                     const influenceWeight = this.centroidWeights[index];
                     
                     // Calculate spring properties based on influence weight
-                    const lineWidth = config.spring.lineWidth + (influenceWeight * 0.2);
-                    const stiffness = 0.001+config.spring.stiffness * 0.2 * influenceWeight;
+                    const lineWidth =  (influenceWeight * 0.2);
+                    const stiffness = 0.0001+config.spring.stiffness * 0.15 * influenceWeight;
                     
                     // Generate color based on centroid color and influence
                     const baseColor = config.colors.centroid[index];
